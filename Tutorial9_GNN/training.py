@@ -13,13 +13,29 @@ def train_valid_loop(net, train_dl, valid_dl, Nepochs, learning_rate=0.001):
     ### Optimizer
     optimizer = torch.optim.Adam(net.parameters(), lr=learning_rate)
 
-    ### Check for GPU
+    ### Check for available accelerator
     device = torch.device("cpu")
     if torch.cuda.is_available():
-        print('Found GPU!')
+        print('Found CUDA GPU!')
         device = torch.device("cuda:0")
+    elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+        print('Found Apple MPS!')
+        device = torch.device("mps")
 
     net.to(device)
+
+    def get_inputs_and_targets(batch_or_pair):
+        if isinstance(batch_or_pair, tuple):
+            xb, yb = batch_or_pair
+            return xb, yb
+
+        xb = batch_or_pair
+        y = xb.y
+        if y.ndim == 1:
+            yb = y.unsqueeze(-1)
+        else:
+            yb = y[:, 0].unsqueeze(-1)
+        return xb, yb
 
     for epoch in tqdm(range(Nepochs)):
 
@@ -27,7 +43,8 @@ def train_valid_loop(net, train_dl, valid_dl, Nepochs, learning_rate=0.001):
         net.train()
 
         train_loss_epoch = []
-        for xb,yb in train_dl:
+        for batch in train_dl:
+            xb, yb = get_inputs_and_targets(batch)
             xb = xb.to(device)
             yb = yb.to(device)
             
@@ -44,7 +61,8 @@ def train_valid_loop(net, train_dl, valid_dl, Nepochs, learning_rate=0.001):
         net.eval()
 
         valid_loss_epoch = []
-        for xb,yb in valid_dl:
+        for batch in valid_dl:
+            xb, yb = get_inputs_and_targets(batch)
             xb = xb.to(device)
             yb = yb.to(device)
             pred = net(xb)

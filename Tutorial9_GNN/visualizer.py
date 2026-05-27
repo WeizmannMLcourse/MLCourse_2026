@@ -25,12 +25,20 @@ atom_colors = {
         'Cl': 'green',
     }
 
-def dgl_to_df(g):
+def pyg_to_df(g):
 
     df = pandas.DataFrame()
 
-    for feat in g.ndata.keys():
-        arr = g.ndata[feat].detach().numpy()
+    num_nodes = int(g.num_nodes)
+
+    for feat, value in g.items():
+        if not hasattr(value, 'detach'):
+            continue
+        if value.ndim == 0:
+            continue
+        if value.shape[0] != num_nodes:
+            continue
+        arr = value.detach().cpu().numpy()
         if arr.ndim == 2:
             for dim in range(arr.shape[1]):
                 df[feat + str(dim)] = arr[:, dim]
@@ -42,11 +50,22 @@ def dgl_to_df(g):
 
 def draw_plotly(g):
 
-    df = dgl_to_df(g)
+    df = pyg_to_df(g)
 
+    atom_column = None
+    if 'attr5' in df.columns:
+        atom_column = 'attr5'
+    elif 'z' in df.columns:
+        atom_column = 'z'
+    elif 'z0' in df.columns:
+        atom_column = 'z0'
+    else:
+        raise KeyError("Expected one of 'attr5', 'z', or 'z0' in graph node features")
+
+    atom_numbers = [int(z) for z in df[atom_column]]
 
     ### Node trace ###
-    names  = [atom_names[z] for z in df['attr5']]
+    names  = [atom_names[z] for z in atom_numbers]
     colors = [atom_colors[n] for n in names]
 
     node_trace=go.Scatter3d(
@@ -56,7 +75,7 @@ def draw_plotly(g):
                 mode='markers',
                 name='atom',
                 marker=dict(symbol='circle',
-                                size=df['attr5']*5,
+                                size=[z * 5 for z in atom_numbers],
                                 color=colors,
                                 line=dict(color='rgb(50,50,50)', width=2)
                                 ),
@@ -68,19 +87,16 @@ def draw_plotly(g):
     
 
     ### Edge trace ###
-    g.apply_edges(lambda edges: {'x_src': edges.src['pos'][:,0]})
-    g.apply_edges(lambda edges: {'x_dst': edges.dst['pos'][:,0]})
-    g.apply_edges(lambda edges: {'y_src': edges.src['pos'][:,1]})
-    g.apply_edges(lambda edges: {'y_dst': edges.dst['pos'][:,1]})
-    g.apply_edges(lambda edges: {'z_src': edges.src['pos'][:,2]})
-    g.apply_edges(lambda edges: {'z_dst': edges.dst['pos'][:,2]})
+    src = g.edge_index[0].detach().cpu().numpy()
+    dst = g.edge_index[1].detach().cpu().numpy()
+    pos = g.pos.detach().cpu().numpy()
 
-    x1list = g.edata['x_src'].detach().numpy()
-    x2list = g.edata['x_dst'].detach().numpy()
-    y1list = g.edata['y_src'].detach().numpy()
-    y2list = g.edata['y_dst'].detach().numpy()
-    z1list = g.edata['z_src'].detach().numpy()
-    z2list = g.edata['z_dst'].detach().numpy()
+    x1list = pos[src, 0]
+    x2list = pos[dst, 0]
+    y1list = pos[src, 1]
+    y2list = pos[dst, 1]
+    z1list = pos[src, 2]
+    z2list = pos[dst, 2]
 
     Xe,Ye,Ze = [],[],[]
 
