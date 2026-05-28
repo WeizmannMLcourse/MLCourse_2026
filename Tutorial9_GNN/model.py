@@ -32,23 +32,23 @@ class FCN(nn.Module):
 
 
 ### Node update network ###
-class NodeNetwork(MessagePassing):
+class MessagePassingBlock(MessagePassing):
 
     def __init__(self, N_hidden):
         super().__init__(aggr='mean')
 
         self.net = FCN(N_hidden*2, [N_hidden*3, N_hidden*2, N_hidden*2], N_hidden)
 
-    def forward(self, h, edge_index):
-        aggregate = self.propagate(edge_index, h=h)
+    def message(self, h_j):
+        return h_j
 
+    def update(self, aggregate, h):
         rep_cat_aggregate = torch.cat([h, aggregate], dim=-1)
         updated_rep = self.net(rep_cat_aggregate)
         return updated_rep
 
-    def message(self, h_j):
-        return h_j
-
+    def forward(self, h, edge_index):
+        return self.propagate(edge_index, h=h)
 
 
 ### Message-passing neural network ###
@@ -67,8 +67,8 @@ class MoleculeMPNN(nn.Module):
                                  [self.N_hidden, self.N_hidden], 
                                   self.N_hidden)
 
-        self.node_networks  = nn.ModuleList(
-            [ NodeNetwork(self.N_hidden) for _ in range(self.N_message_passing_blocks)]
+        self.mp_networks  = nn.ModuleList(
+            [ MessagePassingBlock(self.N_hidden) for _ in range(self.N_message_passing_blocks)]
         )
 
         self.pred_networks = FCN(self.N_hidden, 
@@ -94,7 +94,7 @@ class MoleculeMPNN(nn.Module):
 
         ### Message-passing blocks
         for i in range(self.N_message_passing_blocks):
-            h = self.node_networks[i](h, g.edge_index)
+            h = self.mp_networks[i](h, g.edge_index)
 
         ### This allows to forward-pass a single graph as well as a batched graph
         batch = getattr(g, 'batch', None)
